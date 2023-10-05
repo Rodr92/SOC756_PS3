@@ -1,0 +1,88 @@
+
+#set working directory
+#setwd("C:/Users/rodgo/Desktop/PhD/Ramos/SOC 756/ps3")
+
+install.packages("tidyverse")
+install.packages("HMDHFDplus")
+
+library(tidyverse)
+library(HMDHFDplus)
+
+# read data from Human Mortality Data Base
+
+lt2005 <-readHMDweb(CNTRY="USA",item="bltper_1x1",
+                    username = "xxxxxxxx@xxxxxx.xxxx",
+                    password = "xxxxxxxxx")
+
+lt2005 <- lt2005 |> 
+  filter(Year == 2005)
+
+#Keep just age 16 or more
+
+lt2005 <- lt2005 |> 
+  filter(Age >= 16)
+
+# qxA = probability of non-fatal accident
+lt2005$qxA <- 0.062 - 0.000053*(lt2005$Age^2)
+
+# I get negate probabilities from age 35, which I replace with 0
+lt2005$qxA[lt2005$qxA < 0] <- 0
+
+#to get lxB (both causes) I need the probability of surviving to both death and accidents combined
+lt2005$pxB <- 1 - (lt2005$qxA + lt2005$qx)
+
+#Create an empty vector for lxB and paste the radix in it
+lx_radix <- 85000
+lxB <- numeric(length(lt2005$Age))
+lt2005$lxB [1] <- lx_radix
+
+for (i in 1:(length(lt2005$Age)- 1)) {
+  lt2005$lxB[i + 1] <- lt2005$pxB[i] * lt2005$lxB[i]
+}
+
+#dxA: accident decrements
+lt2005$dxA <- lt2005$lxB * lt2005$qxA
+
+#dxD: deaths decrements using new lx values
+lt2005$dxD <- lt2005$lxB * lt2005$qx
+
+#lxA: lx accidents
+lt2005$lxA <- numeric(length(lt2005$dxA))
+for (i in 1:length(lt2005$dxA)) {
+  lt2005$lxA[i] <- sum(lt2005$dxA[i:length(lt2005$dxA)])
+}
+
+#lxD
+lt2005$lxD <- numeric(length(lt2005$dxD))
+
+for (i in 1:length(lt2005$dxD)) {
+  lt2005$lxD[i] <- sum(lt2005$dxD[i:length(lt2005$dxD)])
+}
+
+####Questions####
+
+## What proportion of Wisconsinites who live to age 16 will live to age 31 
+#without experiencing a motor vehicle accident?
+
+a1 <- lt2005$lxB[lt2005$Age==31] /   lt2005$lxB[lt2005$Age==16]   
+
+## Among those who live to age 25 accident-free, what is the probability 
+# of experiencing an accident by age 31?
+
+a2 <- (lt2005$lxA[lt2005$Age==25] - lt2005$lxA[lt2005$Age==31]) /lt2005$lxB[lt2005$Age==25]  
+
+##Among those who survive to age 16, what is the probability of dying without
+## experiencing an accident by age 31?
+
+a3 <-  (lt2005$lxD[lt2005$Age==16] - lt2005$lxD[lt2005$Age==31]) /lt2005$lxB[lt2005$Age==16]
+
+#Rearrange the table
+lt2005 <- lt2005 |>
+  select(Age, lxB, lxD, lxA, pxB, qx, qxA, dxA, dxD)
+
+# Now I export the datafram to Excel
+install.packages("openxlsx")
+library(openxlsx)
+
+# Export multidecrement.xls
+write.xlsx(lt2005, "multidecrement.xlsx", rowNames = FALSE)
